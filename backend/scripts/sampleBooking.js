@@ -1,0 +1,20 @@
+export const sampleBooking = (overrides = {}) => ({
+  bookingCode: "CSB-A1B2C3",
+  date: "2026-12-20",
+  shift: "morning",
+  vehicleType: "jeep",
+  zone: { name: "Jhirna", slug: "jhirna" },
+  adultsCount: 3,
+  childrenCount: 1,
+  contact: { name: "Asha", email: "asha@example.com", mobile: "9876543210" },
+  travellers: [
+    { type: "adult", name: "Asha", gender: "female", age: 34, nationality: "indian", idType: "aadhaar", idNumber: "123456789012" },
+    { type: "adult", name: "Rohit", gender: "male", age: 36, nationality: "foreigner", idType: "passport", idNumber: "K1234567" },
+    { type: "adult", name: "Meera", gender: "female", age: 61, nationality: "indian", idType: "driving_licence", idNumber: "UK0420110012345" },
+    { type: "child", name: "MEER", gender: "male", age: 9, nationality: "indian", idType: "aadhaar", idNumber: "999988887777" },
+  ],
+  pricing: { subtotalPaise: 1600000, feePaise: 48000, totalPaise: 1648000 },
+  payment: { razorpayPaymentId: "pay_SAMPLE123456" },
+  confirmedAt: new Date(),
+  ...overrides,
+});
