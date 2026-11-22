@@ -41,13 +41,18 @@ export const bulkSchema = z
 
 const paise = z.number().int().min(100).max(10_000_000);
 const timing = z.string().trim().min(3).max(40);
+const twoDecimals = (v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-9;
 
 export const settingsSchema = z.object({
-  feePercent: z.number().min(0).max(20).refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-9, "At most 2 decimals"),
-  jeepIndianPaise: paise,
-  jeepForeignPaise: paise,
-  canterIndianPaise: paise,
-  canterForeignPaise: paise,
+  mainJeepIndianPaise: paise,
+  mainJeepForeignPaise: paise,
+  mainCanterIndianPaise: paise,
+  mainCanterForeignPaise: paise,
+  bufferJeepIndianPaise: paise,
+  bufferJeepForeignPaise: paise,
+  feePercent: z.number().min(0).max(20).refine(twoDecimals, "At most 2 decimals"),
+  gstPercent: z.number().min(0).max(28).refine(twoDecimals, "At most 2 decimals"),
+  advancePercent: z.number().int().min(10).max(95),
   holdMinutes: z.number().int().min(5).max(60),
   shiftTimings: z.object({ morning: timing, evening: timing }),
 });
@@ -60,5 +65,6 @@ export const listBookingsSchema = z.object({
   vehicleType: vehicle.optional(),
   from: ymd.optional(),
   to: ymd.optional(),
+  balance: z.enum(["due"]).optional(),
   sort: z.enum(["newest", "safari_asc", "safari_desc"]).default("newest"),
 });

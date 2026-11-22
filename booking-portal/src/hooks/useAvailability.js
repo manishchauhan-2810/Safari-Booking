@@ -23,3 +23,10 @@ export const useSlots = (date, vehicleType, zone) =>
     enabled: Boolean(date && vehicleType),
     staleTime: 15_000,
   });
+
+export const usePricing = () =>
+  useQuery({
+    queryKey: ['pricing'],
+    queryFn: () => api.get('/public/pricing'),
+    staleTime: 5 * 60_000,
+  });

@@ -32,5 +32,6 @@ router.put("/settings", validate(settingsSchema), settings.updateSettings);
 router.get("/bookings", validate(listBookingsSchema), bookings.list);
 router.get("/bookings/:id", validate(idParamSchema, "params"), bookings.detail);
 router.post("/bookings/:id/resend-email", createLimiter({ limit: 20 }), validate(idParamSchema, "params"), bookings.resendEmail);
+router.post("/bookings/:id/balance-collected", validate(idParamSchema, "params"), bookings.markBalanceCollected);
 
 export default router;

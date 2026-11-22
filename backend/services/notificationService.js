@@ -1,8 +1,8 @@
 import Booking from "../models/Booking.js";
-import Settings from "../models/Settings.js";
 import { generateInvoicePdf } from "./invoiceService.js";
 import { buildConfirmationEmail } from "./emailTemplate.js";
 import { isMailConfigured, sendMail } from "./mailService.js";
+import { getSettingsCached } from "../utils/settingsCache.js";
 
 export const MAX_EMAIL_ATTEMPTS = 5;
 const STALE_CLAIM_MS = 5 * 60 * 1000; // a "sending" claim older than this is considered crashed
@@ -31,13 +31,13 @@ export const sendConfirmationEmail = async (bookingCode, { force = false } = {})
   const booking = await Booking.findOneAndUpdate(
     filter,
     { $set: { emailStatus: "sending", emailClaimedAt: new Date() }, $inc: { emailAttempts: 1 } },
-    { new: true }
+    { returnDocument: "after" }
   ).populate("zone", "name slug");
 
   if (!booking) return { outcome: "skipped" }; // already sent, in progress, not confirmed or out of attempts
 
   try {
-    const settings = await Settings.findOne().lean();
+    const settings = await getSettingsCached();
     const timingText = settings?.shiftTimings?.[booking.shift] || "";
 
     const pdf = await generateInvoicePdf(booking, { timingText });

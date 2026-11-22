@@ -1,24 +1,27 @@
-const TERMS = [
-  'Prices are per vehicle (jeep) or per person (canter), as shown.',
-  'Children aged 5-12 are booked as children. Every booking needs at least one adult.',
-  'Carry the same original ID proof you used for booking, and a hard copy of the permit.',
+import { Link } from 'react-router-dom';
+
+const KEY_POINTS = [
+  'Every booking needs at least one adult. Children aged 5 to 12 travel as children.',
+  'Carry the same original ID you booked with, and a hard copy of the permit.',
   'Mobile phones are prohibited during the safari.',
   'Permits are provisional and may be changed or cancelled by the Forest Department.',
   'Safari amounts are non-refundable.',
 ];
 
 const BookingTerms = () => (
-  <div className="rounded-2xl border-l-4 border-amber-400 bg-white p-5 shadow-md ring-1 ring-earth-200 sm:p-6">
-    <h2 className="mb-3 text-xl font-bold text-green-900">Booking terms</h2>
-    <ul className="space-y-2 text-sm text-earth-700">
-      {TERMS.map((t) => (
-        <li key={t} className="flex gap-2">
-          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-          <span>{t}</span>
-        </li>
+  <section className="rounded-lg border border-earth-200 bg-white p-5 sm:p-6">
+    <h2 className="text-xl font-bold text-earth-900">Before you book</h2>
+    <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-earth-700">
+      {KEY_POINTS.map((t) => (
+        <li key={t}>{t}</li>
       ))}
     </ul>
-  </div>
+    <p className="mt-4 text-sm">
+      <Link to="/terms" className="font-medium text-green-700 underline">
+        Read the full terms and conditions
+      </Link>
+    </p>
+  </section>
 );
 
 export default BookingTerms;

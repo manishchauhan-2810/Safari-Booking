@@ -34,15 +34,24 @@ const bookingSchema = new mongoose.Schema(
     pricing: {
       subtotalPaise: { type: Number, required: true },
       feePaise: { type: Number, required: true },
+      gstPaise: { type: Number, default: 0 },
       totalPaise: { type: Number, required: true },
+      advancePercent: Number,
+      payNowPaise: Number, // what Razorpay charged online
+      balancePaise: { type: Number, default: 0 }, // to pay on the safari day
     },
+    paymentOption: { type: String, enum: ["full", "advance"], default: "full" },
     payment: {
       razorpayOrderId: String,
       razorpayPaymentId: String,
       razorpaySignature: { type: String, select: false },
-      status: { type: String, enum: ["pending", "paid", "failed", "refunded"], default: "pending" },
+      status: { type: String, enum: ["pending", "partial", "paid", "failed", "refunded"], default: "pending" },
       refundId: String,
       refundedAt: Date,
+      paidPaise: Number,
+      balanceStatus: { type: String, enum: ["none", "due", "collected"], default: "none" },
+      balanceCollectedAt: Date,
+      balanceCollectedBy: String,
     },
     status: {
       type: String,
@@ -70,6 +79,7 @@ bookingSchema.index({ "contact.email": 1 });
 bookingSchema.index({ "contact.mobile": 1 });
 bookingSchema.index({ "travellers.idHash": 1 });
 bookingSchema.index({ "payment.razorpayOrderId": 1 }, { sparse: true });
+bookingSchema.index({ "payment.balanceStatus": 1, date: 1 });
 bookingSchema.index({ createdAt: -1 });
 
 export default mongoose.model("Booking", bookingSchema);

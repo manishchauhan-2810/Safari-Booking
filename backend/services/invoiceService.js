@@ -1,165 +1,171 @@
 import PDFDocument from "pdfkit";
 import { getCompany } from "../config/company.js";
+import { decryptField } from "../utils/crypto.js";
 
-// pdfkit's built-in fonts have no rupee glyph, so the PDF uses "INR"
-const GREEN = "#15803d";
-const DARK = "#1f2937";
-const GREY = "#6b7280";
-const LINE = "#e5e7eb";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const ID_LABEL = { aadhaar: "Aadhaar", passport: "Passport", driving_licence: "Driving Licence", oci: "OCI" };
+const cap = (s = "") => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 
-const cap = (s = "") => s.charAt(0).toUpperCase() + s.slice(1);
-const inr = (paise) =>
-  `INR ${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const fmtDate = (ymd) => {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return `${String(d).padStart(2, "0")} ${MONTHS[m - 1]} ${y}`;
+// Helvetica has no rupee glyph, so the PDF uses "Rs"
+const inr = (paise = 0) =>
+  `Rs ${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: paise % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
+
+const fmtDate = (ymd = "") => {
+  const [y, m, d] = String(ymd).split("-").map(Number);
+  return y && m && d ? `${d} ${MONTHS[m - 1]} ${y}` : String(ymd);
 };
-const fmtIst = (date) =>
-  new Date(date).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
-const maskId = (id = "") => `${"*".repeat(Math.max(id.length - 4, 0))}${id.slice(-4)}`;
 
-const L = 40;
-const W = 515;
+const plainId = (v) => {
+  try {
+    return decryptField(v);
+  } catch {
+    return "";
+  }
+};
+
+// Only the last 4 characters are ever printed
+const maskId = (v) => {
+  const id = plainId(v) || "";
+  return id ? `${"*".repeat(Math.max(id.length - 4, 4))}${id.slice(-4)}` : "-";
+};
+
+const LEFT = 40;
+const RIGHT = 555;
+const BOTTOM = 780;
 
 export const generateInvoicePdf = (booking, { timingText = "" } = {}) =>
   new Promise((resolve, reject) => {
-    const company = getCompany();
-    const doc = new PDFDocument({
-      size: "A4",
-      margin: 40,
-      info: { Title: `Invoice INV-${booking.bookingCode}`, Author: company.name },
-    });
-    const chunks = [];
-    doc.on("data", (c) => chunks.push(c));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-
     try {
-      const code = booking.bookingCode;
-      let y;
+      const company = getCompany();
+      const doc = new PDFDocument({ size: "A4", margin: LEFT, info: { Title: `Invoice ${booking.bookingCode}` } });
+      const chunks = [];
+      doc.on("data", (c) => chunks.push(c));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
 
-      // ---- header band ----
-      doc.rect(0, 0, 595, 90).fill(GREEN);
-      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(20).text(company.name, L, 28, { width: 330, lineBreak: false, ellipsis: true });
-      doc.font("Helvetica").fontSize(9).text("Booking Confirmation & Invoice", L, 56);
-      doc.font("Helvetica-Bold").fontSize(15).text("INVOICE", L, 26, { width: W, align: "right" });
-      doc.font("Helvetica").fontSize(9)
-        .text(`Invoice no: INV-${code}`, L, 48, { width: W, align: "right" })
-        .text(`Date: ${fmtIst(booking.confirmedAt || booking.createdAt || Date.now())}`, L, 62, { width: W, align: "right" });
+      const ensureSpace = (h) => {
+        if (doc.y + h > BOTTOM) doc.addPage();
+      };
 
-      // ---- from / billed to ----
-      y = 108;
-      doc.fillColor(GREY).font("Helvetica-Bold").fontSize(8).text("FROM", L, y);
-      doc.fillColor(DARK).font("Helvetica").fontSize(10).text(
-        [company.address, company.gstin ? `GSTIN: ${company.gstin}` : null, company.email, company.phone].filter(Boolean).join("\n") || company.name,
-        L, y + 12, { width: 250 }
-      );
-      doc.fillColor(GREY).font("Helvetica-Bold").fontSize(8).text("BILLED TO", 320, y);
-      doc.fillColor(DARK).font("Helvetica").fontSize(10).text(
-        `${booking.contact.name}\n${booking.contact.email}\n${booking.contact.mobile}`, 320, y + 12, { width: 235 }
-      );
+      // ---- Header ----
+      doc.rect(0, 0, 595, 80).fill("#15803d");
+      doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(20).text(company.name, LEFT, 22, { width: 330 });
+      doc.font("Helvetica").fontSize(10).text("INVOICE", 400, 24, { width: 155, align: "right" });
+      doc.text(`# ${booking.bookingCode}`, 400, 40, { width: 155, align: "right" });
+      doc.text(fmtDate(booking.date ? (booking.confirmedAt ? new Date(booking.confirmedAt).toISOString().slice(0, 10) : booking.date) : ""), 400, 55, {
+        width: 155,
+        align: "right",
+      });
 
-      // ---- safari details box ----
-      y = 200;
-      doc.roundedRect(L, y, W, 118, 4).fill("#f0fdf4");
-      const adults = booking.adultsCount;
-      const kids = booking.childrenCount || 0;
-      const items = [
-        ["BOOKING CODE", code],
-        ["SAFARI DATE", fmtDate(booking.date)],
-        ["TIMING", `${cap(booking.shift)}${timingText ? ` (${timingText})` : ""}`],
-        ["ZONE", booking.zone?.name || "-"],
-        ["VEHICLE", cap(booking.vehicleType)],
-        ["TRAVELLERS", `${adults} adult${adults === 1 ? "" : "s"}${kids ? `, ${kids} child${kids === 1 ? "" : "ren"}` : ""}`],
+      doc.fillColor("#111827");
+      doc.y = 95;
+      doc.font("Helvetica").fontSize(9).fillColor("#6b7280");
+      if (company.address) doc.text(company.address, LEFT, doc.y, { width: 300 });
+      if (company.gstin) doc.text(`GSTIN: ${company.gstin}`, LEFT, doc.y);
+      const contactLine = [company.email, company.phone].filter(Boolean).join("  |  ");
+      if (contactLine) doc.text(contactLine, LEFT, doc.y);
+      doc.moveDown(1);
+
+      // ---- Booking details ----
+      doc.fillColor("#111827").font("Helvetica-Bold").fontSize(12).text("Booking details", LEFT, doc.y);
+      doc.moveDown(0.4);
+
+      const when = `${fmtDate(booking.date)}, ${cap(booking.shift)}${timingText ? ` (${timingText})` : ""}`;
+      const details = [
+        ["Customer", booking.contact?.name],
+        ["Email", booking.contact?.email],
+        ["Mobile", booking.contact?.mobile],
+        ["Safari date", when],
+        ["Zone", booking.zone?.name || "-"],
+        ["Vehicle", cap(booking.vehicleType)],
+        ["Travellers", `${booking.adultsCount} adult(s)${booking.childrenCount ? `, ${booking.childrenCount} child(ren)` : ""}`],
+        ["Payment ID", booking.payment?.razorpayPaymentId || "-"],
       ];
-      items.forEach(([label, value], i) => {
-        const x = L + 14 + (i % 2) * 250;
-        const yy = y + 12 + Math.floor(i / 2) * 34;
-        doc.fillColor(GREY).font("Helvetica-Bold").fontSize(8).text(label, x, yy);
-        doc.fillColor(DARK).font("Helvetica-Bold").fontSize(11).text(value, x, yy + 12, { width: 235, lineBreak: false, ellipsis: true });
-      });
-      y += 134;
+      for (const [k, v] of details) {
+        const y = doc.y;
+        doc.font("Helvetica").fontSize(10).fillColor("#6b7280").text(k, LEFT, y, { width: 110 });
+        doc.font("Helvetica-Bold").fillColor("#111827").text(String(v ?? "-"), LEFT + 120, y, { width: RIGHT - LEFT - 120 });
+      }
+      doc.moveDown(1);
 
-      // ---- travellers table ----
-      const ensure = (height) => {
-        if (y + height > 780) {
+      // ---- Travellers table (paginated) ----
+      const cols = [
+        { label: "#", x: LEFT, w: 25 },
+        { label: "Name", x: LEFT + 25, w: 170 },
+        { label: "Type", x: LEFT + 195, w: 50 },
+        { label: "Age", x: LEFT + 245, w: 35 },
+        { label: "Nationality", x: LEFT + 280, w: 80 },
+        { label: "ID type", x: LEFT + 360, w: 70 },
+        { label: "ID number", x: LEFT + 430, w: 85 },
+      ];
+      const drawTableHead = () => {
+        const y = doc.y;
+        doc.rect(LEFT, y - 3, RIGHT - LEFT, 18).fill("#f3f4f6");
+        doc.fillColor("#111827").font("Helvetica-Bold").fontSize(9);
+        for (const c of cols) doc.text(c.label, c.x + 2, y + 1, { width: c.w });
+        doc.y = y + 20;
+      };
+
+      ensureSpace(60);
+      doc.fillColor("#111827").font("Helvetica-Bold").fontSize(12).text("Travellers", LEFT, doc.y);
+      doc.moveDown(0.4);
+      drawTableHead();
+
+      (booking.travellers || []).forEach((t, i) => {
+        if (doc.y + 18 > BOTTOM) {
           doc.addPage();
-          y = 40;
-          return true;
+          drawTableHead();
         }
-        return false;
-      };
-      const cols = { n: L + 6, name: L + 28, type: L + 215, ag: L + 268, nat: L + 340, id: L + 408 };
-      const tableHeader = () => {
-        doc.rect(L, y, W, 20).fill(DARK);
-        doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(8.5);
-        doc.text("#", cols.n, y + 6).text("NAME", cols.name, y + 6).text("TYPE", cols.type, y + 6)
-          .text("AGE / GENDER", cols.ag, y + 6).text("NATIONALITY", cols.nat, y + 6).text("ID PROOF", cols.id, y + 6);
-        y += 20;
-      };
-      tableHeader();
-      booking.travellers.forEach((t, i) => {
-        if (ensure(22)) tableHeader();
-        if (i % 2 === 1) doc.rect(L, y, W, 22).fill("#f9fafb");
-        doc.fillColor(DARK).font("Helvetica").fontSize(9);
-        doc.text(String(i + 1), cols.n, y + 7);
-        doc.text(t.name, cols.name, y + 7, { width: 180, lineBreak: false, ellipsis: true });
-        doc.text(cap(t.type), cols.type, y + 7);
-        doc.text(`${t.age} / ${cap(t.gender)}`, cols.ag, y + 7);
-        doc.text(cap(t.nationality), cols.nat, y + 7);
-        doc.text(`${ID_LABEL[t.idType] || t.idType}: ${maskId(t.idNumber)}`, cols.id, y + 7, { width: 145, lineBreak: false, ellipsis: true });
-        doc.moveTo(L, y + 22).lineTo(L + W, y + 22).strokeColor(LINE).lineWidth(0.5).stroke();
-        y += 22;
+        const y = doc.y;
+        const cells = [String(i + 1), t.name, cap(t.type), String(t.age ?? ""), cap(t.nationality), String(t.idType || "").replace(/_/g, " "), maskId(t.idNumber)];
+        doc.font("Helvetica").fontSize(9).fillColor("#111827");
+        cols.forEach((c, idx) => doc.text(cells[idx], c.x + 2, y, { width: c.w - 4, lineBreak: false, ellipsis: true }));
+        doc.y = y + 16;
       });
+      doc.moveDown(1);
 
-      // ---- price breakdown ----
-      y += 16;
-      ensure(120);
-      const { subtotalPaise, feePaise, totalPaise } = booking.pricing;
-      const pct = subtotalPaise ? Math.round((feePaise / subtotalPaise) * 1000) / 10 : 0;
+      // ---- Pricing ----
+      ensureSpace(150);
+      const p = booking.pricing || {};
+      const total = p.totalPaise ?? 0;
+      const payNow = p.payNowPaise ?? total;
+      const balance = p.balancePaise ?? 0;
+      const lines = [
+        ["Safari charges", inr(p.subtotalPaise)],
+        ["Platform fee", inr(p.feePaise)],
+        ["GST", inr(p.gstPaise || 0)],
+      ];
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("#111827").text("Payment summary", LEFT, doc.y);
+      doc.moveDown(0.4);
       const row = (label, value, bold = false) => {
-        doc.fillColor(DARK).font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(bold ? 12 : 10);
-        doc.text(label, 290, y, { width: 150 }).text(value, 440, y, { width: 115, align: "right" });
-        y += bold ? 20 : 17;
+        const y = doc.y;
+        doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(10).fillColor("#111827");
+        doc.text(label, LEFT, y, { width: 300 });
+        doc.text(value, 400, y, { width: RIGHT - 400, align: "right" });
+        doc.y = y + 16;
       };
-      row("Subtotal", inr(subtotalPaise));
-      row(`Handling & gateway (${pct}%)`, inr(feePaise));
-      doc.moveTo(290, y).lineTo(555, y).strokeColor(DARK).lineWidth(1).stroke();
-      y += 6;
-      row("Total paid", inr(totalPaise), true);
+      lines.forEach(([l, v]) => row(l, v));
+      doc.moveTo(LEFT, doc.y).lineTo(RIGHT, doc.y).strokeColor("#e5e7eb").stroke();
+      doc.y += 6;
+      row("Total", inr(total), true);
+      row("Paid online", inr(payNow), true);
+      if (balance > 0) row("Balance due on safari day", inr(balance), true);
+      doc.moveDown(1);
 
-      doc.fillColor(GREEN).font("Helvetica-Bold").fontSize(10).text("PAID", L, y - 36);
-      doc.fillColor(GREY).font("Helvetica").fontSize(9)
-        .text(`Payment ID: ${booking.payment?.razorpayPaymentId || "-"}`, L, y - 22)
-        .text("Paid online via Razorpay", L, y - 10);
-
-      // ---- notes ----
-      y += 14;
-      ensure(110);
-      doc.fillColor(DARK).font("Helvetica-Bold").fontSize(10).text("Important", L, y);
-      y += 15;
-      const notes = [
-        "Carry the same original ID card used during booking, and a hard copy of this permit.",
+      // ---- Notes ----
+      ensureSpace(90);
+      doc.font("Helvetica-Bold").fontSize(10).fillColor("#111827").text("Please remember", LEFT, doc.y);
+      doc.font("Helvetica").fontSize(9).fillColor("#374151");
+      [
+        "Carry the same original ID card used for booking, and a hard copy of the permit.",
         "Mobile phones are prohibited during the safari.",
         "Do not get down from the vehicle. Walking or trekking is strictly prohibited.",
-        "Entry permits are provisional and can be changed or cancelled by the Forest Department.",
-        "Safari amounts are non-refundable.",
-        "Guide fee is paid by the guest directly on the spot.",
-      ];
-      doc.font("Helvetica").fontSize(9).fillColor(GREY);
-      notes.forEach((n) => {
-        doc.text(`•  ${n}`, L, y, { width: W });
-        y += 14;
-      });
-
-      y += 8;
-      ensure(30);
-      doc.fillColor(GREY).fontSize(8).text("This is a computer-generated document and does not require a signature.", L, y, { width: W, align: "center" });
+        "Safari amounts are non-refundable. Permits are provisional and may be changed by the Forest Department.",
+      ].forEach((n) => doc.text(`- ${n}`, LEFT, doc.y + 2, { width: RIGHT - LEFT }));
 
       doc.end();
     } catch (err) {
       reject(err);
     }
   });
+
+export default generateInvoicePdf;

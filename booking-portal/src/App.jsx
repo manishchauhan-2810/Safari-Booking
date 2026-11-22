@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
 import TravellerDetails from './pages/TravellerDetails';
 import BookingSuccess from './pages/BookingSuccess';
+import Terms from './pages/Terms';
 import NotFound from './pages/NotFound';
 import './index.css';
 
@@ -29,6 +30,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/traveller-details" element={<TravellerDetails />} />
             <Route path="/booking-success/:bookingCode" element={<BookingSuccess />} />
+            <Route path="/terms" element={<Terms />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

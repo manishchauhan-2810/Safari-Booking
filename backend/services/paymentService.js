@@ -8,38 +8,38 @@ import {
   unitsForBooking,
 } from "./inventoryService.js";
 
-const paidFields = ({ paymentId, signature }) => ({
-  "payment.razorpayPaymentId": paymentId,
-  "payment.status": "paid",
-  ...(signature ? { "payment.razorpaySignature": signature } : {}),
-});
+const paidFields = ({ paymentId, signature, booking }) => {
+  const payNow = booking.pricing.payNowPaise ?? booking.pricing.totalPaise;
+  const balance = booking.pricing.balancePaise ?? 0;
+  return {
+    "payment.razorpayPaymentId": paymentId,
+    "payment.status": balance > 0 ? "partial" : "paid",
+    "payment.paidPaise": payNow,
+    "payment.balanceStatus": balance > 0 ? "due" : "none",
+    ...(signature ? { "payment.razorpaySignature": signature } : {}),
+  };
+};
 
 const markNeedsRefund = (bookingId, fromStatuses, fields) =>
   Booking.findOneAndUpdate(
     { _id: bookingId, status: { $in: fromStatuses } },
     { $set: { ...fields, status: "paid_needs_refund" } },
-    { new: true }
+    { returnDocument: "after" }
   );
 
-/**
- * Confirms a paid booking. Safe to call many times, in parallel, from verify and webhook.
- * outcomes: confirmed | confirmed_late | already_processed | needs_refund |
- *           not_found | order_mismatch | amount_mismatch | invalid_status
- *
- * Late payments (hold already expired): we try to re-reserve the seat. If it is gone,
- * the booking becomes "paid_needs_refund" and must be refunded manually.
- */
 export const confirmBookingPayment = async ({ bookingCode, orderId, paymentId, signature = null, amountPaise = null }) => {
   const booking = await Booking.findOne({ bookingCode });
   if (!booking) return { outcome: "not_found" };
   if (booking.payment?.razorpayOrderId !== orderId) return { outcome: "order_mismatch" };
-  if (amountPaise !== null && amountPaise !== booking.pricing.totalPaise) return { outcome: "amount_mismatch", booking };
+  if (amountPaise !== null && amountPaise !== (booking.pricing.payNowPaise ?? booking.pricing.totalPaise)) {
+    return { outcome: "amount_mismatch", booking };
+  }
   if (["confirmed", "paid_needs_refund"].includes(booking.status)) return { outcome: "already_processed", booking };
   if (!["pending", "expired"].includes(booking.status)) return { outcome: "invalid_status", booking };
 
   const units = unitsForBooking(booking);
   const slotId = await findSlotIdForBooking(booking);
-  const fields = paidFields({ paymentId, signature });
+  const fields = paidFields({ paymentId, signature, booking });
 
   if (!slotId) {
     const b = await markNeedsRefund(booking._id, ["pending", "expired"], fields);
@@ -50,7 +50,7 @@ export const confirmBookingPayment = async ({ bookingCode, orderId, paymentId, s
   const confirmed = await Booking.findOneAndUpdate(
     { _id: booking._id, status: "pending" },
     { $set: { ...fields, confirmedAt: new Date(), status: "confirmed" } },
-    { new: true }
+    { returnDocument: "after" }
   );
   if (confirmed) {
     try {
@@ -60,7 +60,7 @@ export const confirmBookingPayment = async ({ bookingCode, orderId, paymentId, s
       const b = await Booking.findOneAndUpdate(
         { _id: booking._id, status: "confirmed" },
         { $set: { status: "paid_needs_refund" } },
-        { new: true }
+        { returnDocument: "after" }
       );
       return { outcome: "needs_refund", booking: b ?? confirmed };
     }
@@ -79,7 +79,7 @@ export const confirmBookingPayment = async ({ bookingCode, orderId, paymentId, s
   const claimed = await Booking.findOneAndUpdate(
     { _id: booking._id, status: "expired" },
     { $set: { ...fields, confirmedAt: new Date(), status: "confirmed" } },
-    { new: true }
+    { returnDocument: "after" }
   );
   if (!claimed) {
     await releaseCapacity(slotId, units); // someone else handled it; give the seat back

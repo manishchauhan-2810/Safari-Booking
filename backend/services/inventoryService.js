@@ -29,7 +29,7 @@ export const reserveCapacity = async (slotFilter, units) => {
       $expr: { $gte: [{ $subtract: ["$totalUnits", { $add: ["$bookedUnits", "$heldUnits"] }] }, units] },
     },
     { $inc: { heldUnits: units } },
-    { new: true }
+    { returnDocument: "after" }
   );
   if (!slot) throw new ApiError(409, "Not enough capacity left for this slot");
   return slot;
@@ -41,7 +41,7 @@ export const confirmCapacity = async (slotId, units) => {
   const slot = await Availability.findOneAndUpdate(
     { _id: slotId, heldUnits: { $gte: units } },
     { $inc: { heldUnits: -units, bookedUnits: units } },
-    { new: true }
+    { returnDocument: "after" }
   );
   if (!slot) throw new ApiError(500, "Failed to confirm capacity (no matching hold)");
   return slot;
@@ -53,7 +53,7 @@ export const releaseCapacity = async (slotId, units) => {
   const slot = await Availability.findOneAndUpdate(
     { _id: slotId, heldUnits: { $gte: units } },
     { $inc: { heldUnits: -units } },
-    { new: true }
+    { returnDocument: "after" }
   );
   if (!slot) console.warn(`[inventory] release skipped: slot ${slotId} has fewer than ${units} held units`);
   return slot;

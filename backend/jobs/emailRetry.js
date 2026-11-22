@@ -1,6 +1,5 @@
 import Booking from "../models/Booking.js";
 import { MAX_EMAIL_ATTEMPTS, sendConfirmationEmail } from "../services/notificationService.js";
-
 export const retryPendingEmails = async () => {
   const now = Date.now();
   const rows = await Booking.find({
@@ -38,3 +37,4 @@ export const startEmailRetryJob = (intervalMs = 5 * 60_000) => {
   timer.unref?.();
   return () => clearInterval(timer);
 };
+

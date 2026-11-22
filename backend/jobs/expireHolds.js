@@ -11,7 +11,7 @@ export const expireHoldsOnce = async (now = new Date()) => {
     const flipped = await Booking.findOneAndUpdate(
       { _id: b._id, status: "pending" },
       { $set: { status: "expired" } },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!flipped) continue;
 

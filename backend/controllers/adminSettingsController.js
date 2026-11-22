@@ -1,32 +1,35 @@
-import Settings from "../models/Settings.js";
+import Settings, { DEFAULT_SETTINGS } from "../models/Settings.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import { logAction } from "../services/auditService.js";
+import { clearSettingsCache } from "../utils/settingsCache.js";
 
-const FIELDS = ["feePercent", "jeepIndianPaise", "jeepForeignPaise", "canterIndianPaise", "canterForeignPaise", "holdMinutes", "shiftTimings"];
-const DEFAULT_TIMINGS = { morning: "6:00 AM - 9:00 AM", evening: "2:30 PM - 6:00 PM" };
-const NOTE = "Price and fee changes apply to NEW bookings only. Existing bookings keep the price they were created with.";
+const FIELDS = Object.keys(DEFAULT_SETTINGS);
+const NOTE = "Price, fee, GST and advance changes apply to NEW bookings only. Existing bookings keep the amounts they were created with.";
 
-// An older Settings document may have no (or empty) timings. Always return usable values.
-const pick = (s) => ({
-  ...Object.fromEntries(FIELDS.map((k) => [k, s[k]])),
-  shiftTimings: {
-    morning: s.shiftTimings?.morning || DEFAULT_TIMINGS.morning,
-    evening: s.shiftTimings?.evening || DEFAULT_TIMINGS.evening,
-  },
-});
+// An older Settings document may lack newer fields: always return usable values
+const pick = (s) => {
+  const merged = { ...DEFAULT_SETTINGS, ...(s || {}) };
+  return {
+    ...Object.fromEntries(FIELDS.map((k) => [k, merged[k]])),
+    shiftTimings: {
+      morning: s?.shiftTimings?.morning || DEFAULT_SETTINGS.shiftTimings.morning,
+      evening: s?.shiftTimings?.evening || DEFAULT_SETTINGS.shiftTimings.evening,
+    },
+  };
+};
 
 export const getSettings = asyncHandler(async (_req, res) => {
   const settings = await Settings.findOneAndUpdate({}, { $setOnInsert: {} }, { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }).lean();
   res.json({ success: true, data: pick(settings) });
 });
 
-// Prices live in Settings and are copied into each booking at creation time,
-// which is why a change here never touches existing bookings.
+// Prices are copied into each booking when it is created, so a change here never touches existing bookings.
 export const updateSettings = asyncHandler(async (req, res) => {
   const body = Object.fromEntries(FIELDS.map((k) => [k, req.validated[k]]));
-  const before = (await Settings.findOne().lean()) || {};
+  const before = pick(await Settings.findOne().lean());
 
   const after = await Settings.findOneAndUpdate({}, { $set: body }, { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true }).lean();
+  clearSettingsCache(); // new prices apply immediately on this server
 
   const changes = {};
   for (const k of FIELDS) {

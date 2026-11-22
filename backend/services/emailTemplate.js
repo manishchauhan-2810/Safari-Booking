@@ -15,7 +15,8 @@ export const buildConfirmationEmail = (booking, { timingText = "" } = {}) => {
   const company = getCompany();
   const when = `${fmtDate(booking.date)}, ${cap(booking.shift)}${timingText ? ` (${timingText})` : ""}`;
   const zone = booking.zone?.name || "";
-  const total = inr(booking.pricing.totalPaise);
+  const payNow = booking.pricing.payNowPaise ?? booking.pricing.totalPaise;
+  const balance = booking.pricing.balancePaise ?? 0;
 
   const rows = [
     ["Booking code", booking.bookingCode],
@@ -23,7 +24,8 @@ export const buildConfirmationEmail = (booking, { timingText = "" } = {}) => {
     ["Zone", zone],
     ["Vehicle", cap(booking.vehicleType)],
     ["Travellers", `${booking.adultsCount} adult(s)${booking.childrenCount ? `, ${booking.childrenCount} child(ren)` : ""}`],
-    ["Amount paid", total],
+    ["Amount paid", inr(payNow)],
+    ...(balance > 0 ? [["Balance due on safari day", inr(balance)]] : []),
   ];
 
   const rowHtml = rows

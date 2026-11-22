@@ -38,6 +38,10 @@ const toListItem = (b) => ({
   total: formatRupees(b.pricing.totalPaise),
   paymentStatus: b.payment?.status,
   paymentId: b.payment?.razorpayPaymentId || "",
+  paymentOption: b.paymentOption || "full",
+  payNow: formatRupees(b.pricing.payNowPaise ?? b.pricing.totalPaise),
+  balance: formatRupees(b.pricing.balancePaise || 0),
+  balanceStatus: b.payment?.balanceStatus || "none",
   emailStatus: b.emailStatus,
   createdAt: b.createdAt,
   confirmedAt: b.confirmedAt,
@@ -45,11 +49,12 @@ const toListItem = (b) => ({
 
 // ---------- GET /bookings ----------
 export const list = asyncHandler(async (req, res) => {
-  const { page, limit, q, status, vehicleType, from, to, sort } = req.validated;
+  const { page, limit, q, status, vehicleType, from, to, sort, balance } = req.validated;
   const filter = {};
 
   if (status && status !== "all") filter.status = status;
   if (vehicleType) filter.vehicleType = vehicleType;
+  if (balance === "due") filter["payment.balanceStatus"] = "due";
   if (from || to) filter.date = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
 
   if (q) {
@@ -89,7 +94,7 @@ export const detail = asyncHandler(async (req, res) => {
   if (!b) throw new ApiError(404, "Booking not found");
 
   // Full ID numbers leave the server only here, and every view is recorded
-  logAction(req, "booking_view", `Viewed booking ${b.bookingCode} (including ID numbers)`, { bookingCode: b.bookingCode });
+  await logAction(req, "booking_view", `Viewed booking ${b.bookingCode} (including ID numbers)`, { bookingCode: b.bookingCode });
 
   res.json({
     success: true,
@@ -98,7 +103,10 @@ export const detail = asyncHandler(async (req, res) => {
       pricing: {
         subtotal: formatRupees(b.pricing.subtotalPaise),
         fee: formatRupees(b.pricing.feePaise),
+        gst: formatRupees(b.pricing.gstPaise || 0),
         total: formatRupees(b.pricing.totalPaise),
+        payNow: formatRupees(b.pricing.payNowPaise ?? b.pricing.totalPaise),
+        balance: formatRupees(b.pricing.balancePaise || 0),
       },
       payment: { status: b.payment?.status, orderId: b.payment?.razorpayOrderId || "", paymentId: b.payment?.razorpayPaymentId || "" },
       emailAttempts: b.emailAttempts,
@@ -130,4 +138,20 @@ export const resendEmail = asyncHandler(async (req, res) => {
   if (outcome === "failed") throw new ApiError(502, "The email could not be sent. Check the server logs.");
   if (outcome === "skipped") throw new ApiError(409, "An email is already being sent for this booking. Try again in a minute.");
   res.json({ success: true, message: "Invoice sent" });
+});
+
+// ---------- POST /bookings/:id/balance-collected ----------
+// The client collects the remaining amount on the safari day, then records it here.
+export const markBalanceCollected = asyncHandler(async (req, res) => {
+  const updated = await Booking.findOneAndUpdate(
+    { _id: req.validated.id, status: "confirmed", "payment.balanceStatus": "due" },
+    { $set: { "payment.balanceStatus": "collected", "payment.balanceCollectedAt": new Date(), "payment.balanceCollectedBy": req.admin.email, "payment.status": "paid" } },
+    { returnDocument: "after" }
+  ).select("bookingCode pricing").lean();
+  if (!updated) throw new ApiError(409, "This booking has no balance due, or it was already collected.");
+  logAction(req, "booking_balance_collected", `Balance collected for ${updated.bookingCode}`, {
+    bookingCode: updated.bookingCode,
+    balancePaise: updated.pricing.balancePaise,
+  });
+  res.json({ success: true, message: "Balance marked as collected" });
 });

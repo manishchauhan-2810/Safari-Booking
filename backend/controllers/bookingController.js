@@ -1,13 +1,13 @@
 import crypto from "crypto";
 import Booking from "../models/Booking.js";
 import Availability from "../models/Availability.js";
-import Settings from "../models/Settings.js";
 import { calculatePrice } from "../services/pricingService.js";
 import { validateComposition } from "../services/rulesService.js";
 import { reserveCapacity, releaseCapacity } from "../services/inventoryService.js";
 import ApiError from "../utils/ApiError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import { resolveZone } from "../utils/zoneHelper.js";
+import { getSettingsCached } from "../utils/settingsCache.js";
 import { getTodayIST } from "../utils/date.js";
 import { getRazorpay } from "../utils/razorpay.js";
 import { toBookingSummary } from "../utils/bookingDto.js";
@@ -29,14 +29,14 @@ const createBookingDoc = async (data) => {
 };
 
 export const createBooking = asyncHandler(async (req, res) => {
-  const { vehicleType, zone: zoneParam, date, shift, contact, travellers } = req.validated;
+  const { vehicleType, zone: zoneParam, date, shift, contact, travellers, paymentOption } = req.validated;
 
   if (date < getTodayIST()) throw new ApiError(400, "Date cannot be in the past");
 
   const zone = await resolveZone(zoneParam);
-  if (!zone) throw new ApiError(404, "Zone not found");
+  if (!zone || !zone.isActive) throw new ApiError(404, "Zone not found");
 
-  const slot = await Availability.findOne({ date, shift, zone: zone._id, vehicleType });
+  const slot = await Availability.findOne({ date, shift, zone: zone._id, vehicleType }).select("_id isOpen").lean();
   if (!slot) throw new ApiError(404, "Slot not found");
   if (!slot.isOpen) throw new ApiError(400, "Slot is closed");
 
@@ -45,9 +45,10 @@ export const createBooking = asyncHandler(async (req, res) => {
   await validateComposition({ vehicleType, zone: zone._id, adultsCount, childrenCount });
 
   // Everything that can fail cheaply happens BEFORE we take a hold
-  const settings = await Settings.findOne().lean();
+  const settings = await getSettingsCached();
   const holdMinutes = settings?.holdMinutes || Number(process.env.HOLD_MINUTES) || 15;
-  const pricing = await calculatePrice({ vehicleType, travellers, settingsOverride: settings });
+  // The client never sends a price: the server decides it from the zone, nationalities and settings
+  const price = await calculatePrice({ vehicleType, travellers, zone, paymentOption, settingsOverride: settings });
   const units = vehicleType === "jeep" ? 1 : adultsCount + childrenCount;
 
   const pending = await Booking.countDocuments({
@@ -65,16 +66,27 @@ export const createBooking = asyncHandler(async (req, res) => {
   let order;
   try {
     booking = await createBookingDoc({
-      date, zone: zone._id, shift, vehicleType, adultsCount, childrenCount, travellers, contact, pricing,
+      date, zone: zone._id, shift, vehicleType, adultsCount, childrenCount, travellers, contact,
+      paymentOption: price.paymentOption,
+      pricing: {
+        subtotalPaise: price.subtotalPaise,
+        feePaise: price.feePaise,
+        gstPaise: price.gstPaise,
+        totalPaise: price.totalPaise,
+        advancePercent: price.advancePercent,
+        payNowPaise: price.payNowPaise,
+        balancePaise: price.balancePaise,
+      },
       status: "pending",
       expiresAt: new Date(Date.now() + holdMinutes * 60 * 1000),
     });
 
+    // Razorpay charges only what is due online: the full total, or the advance share
     order = await getRazorpay().orders.create({
-      amount: pricing.totalPaise,
+      amount: price.payNowPaise,
       currency: "INR",
       receipt: booking.bookingCode,
-      notes: { bookingCode: booking.bookingCode },
+      notes: { bookingCode: booking.bookingCode, paymentOption: price.paymentOption },
     });
 
     booking.payment.razorpayOrderId = order.id;
@@ -97,7 +109,10 @@ export const createBooking = asyncHandler(async (req, res) => {
     data: {
       bookingCode: booking.bookingCode,
       orderId: order.id,
-      amount: pricing.totalPaise,
+      amount: price.payNowPaise, // what the Razorpay window will charge
+      totalPaise: price.totalPaise,
+      balancePaise: price.balancePaise,
+      paymentOption: price.paymentOption,
       currency: "INR",
       keyId: process.env.RAZORPAY_KEY_ID,
       expiresAt: booking.expiresAt,

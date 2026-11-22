@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import mongoose from "mongoose";
@@ -20,6 +21,7 @@ const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY || 0));
 
 app.use(helmet());
+app.use(compression());
 app.use(
   cors({
     origin: (process.env.CLIENT_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
@@ -48,9 +50,14 @@ app.use(cookieParser());
 
 // Never log the query string (it can contain customer emails)
 morgan.token("safe-url", (req) => req.originalUrl.split("?")[0]);
-app.use(morgan(isProd ? ":remote-addr :method :safe-url :status :response-time ms" : ":method :safe-url :status :response-time ms"));
+app.use(
+  morgan(isProd ? ":remote-addr :method :safe-url :status :response-time ms" : ":method :safe-url :status :response-time ms", {
+    skip: (req) => isProd && req.originalUrl.startsWith("/api/v1/health"), // keep logs readable under load
+  })
+);
 
-const customerLimiter = createLimiter({ limit: 600 });
+// Per IP. Generous enough for a family or office sharing one connection.
+const customerLimiter = createLimiter({ limit: 900 });
 app.use("/api/v1/public", customerLimiter, publicRoutes);
 app.use("/api/v1/bookings", customerLimiter, bookingRoutes);
 app.use("/api/v1/payments", customerLimiter, paymentRoutes);

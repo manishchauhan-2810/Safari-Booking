@@ -8,6 +8,7 @@
     "dev": "nodemon index.js",
     "test": "vitest run",
     "seed": "node scripts/seed.js",
+    "seed:prices": "node scripts/seed.js --reset-prices",
     "seed:availability": "node scripts/seedAvailability.js",
     "test:flow": "node scripts/testFlow.js",
     "reconcile": "node scripts/reconcileHolds.js",
@@ -21,8 +22,12 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^18.0.7",

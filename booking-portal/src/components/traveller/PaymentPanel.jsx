@@ -13,17 +13,17 @@ const Support = () =>
   ) : null;
 
 const PaymentError = ({ error, onRetryPayment, onRetryVerify }) => (
-  <div role="alert" className="mb-4 p-4 bg-red-50 border border-red-200 rounded text-red-700">
+  <div role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
     <p className="font-semibold">{error.message}</p>
 
     {error.kind === 'retry' && (
-      <button type="button" onClick={onRetryPayment} className="mt-3 px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800">
+      <button type="button" onClick={onRetryPayment} className="mt-3 rounded-md bg-green-700 px-4 py-2 text-white hover:bg-green-800">
         Try payment again
       </button>
     )}
 
     {error.kind === 'expired' && (
-      <Link to="/" className="inline-block mt-3 px-4 py-2 bg-earth-800 text-white rounded hover:bg-earth-900">
+      <Link to="/" className="mt-3 inline-block rounded-md bg-earth-800 px-4 py-2 text-white hover:bg-earth-900">
         Start again
       </Link>
     )}
@@ -42,12 +42,19 @@ const PaymentError = ({ error, onRetryPayment, onRetryVerify }) => (
           If money was deducted, do not pay again. Booking code: <strong>{error.bookingCode}</strong> | Payment ID:{' '}
           <strong>{error.paymentId}</strong>
         </p>
-        <button type="button" onClick={onRetryVerify} className="mt-3 px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800">
+        <button type="button" onClick={onRetryVerify} className="mt-3 rounded-md bg-green-700 px-4 py-2 text-white hover:bg-green-800">
           Retry confirmation
         </button>
         <Support />
       </>
     )}
+  </div>
+);
+
+const Line = ({ label, value, bold }) => (
+  <div className={`flex justify-between gap-4 ${bold ? 'border-t border-earth-200 pt-2 font-bold text-earth-900' : ''}`}>
+    <dt>{label}</dt>
+    <dd>{value}</dd>
   </div>
 );
 
@@ -75,63 +82,57 @@ const PaymentPanel = ({
     : 'Payable amount: ₹ —';
 
   let hint = null;
-  if (quoteError) hint = <p className="text-red-500 text-sm mt-2">{quoteError.message}</p>;
-  else if (!isFormValid) hint = <p className="text-earth-500 text-sm mt-2">Fill in all traveller details to see the amount</p>;
-  else if (calculating) hint = <p className="text-earth-600 text-sm mt-2">Calculating price...</p>;
-  else if (quote && !termsAccepted) hint = <p className="text-earth-500 text-sm mt-2">Accept the terms to continue</p>;
+  if (quoteError) hint = <p className="mt-2 text-sm text-red-500">{quoteError.message}</p>;
+  else if (!isFormValid) hint = <p className="mt-2 text-sm text-earth-500">Fill in all traveller details to see the amount</p>;
+  else if (calculating) hint = <p className="mt-2 text-sm text-earth-600">Calculating price...</p>;
+  else if (quote && !termsAccepted) hint = <p className="mt-2 text-sm text-earth-500">Accept the terms to continue</p>;
 
   return (
-    <div className="bg-white p-6 rounded-lg border border-earth-200 mt-6">
+    <div className="mt-6 rounded-lg border border-earth-200 bg-white p-6">
       {stage === 'confirming' && (
         <div role="status" aria-live="assertive" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 text-center text-white">
           <p className="text-xl">Confirming your payment, please do not close this page</p>
         </div>
       )}
 
-      <h2 className="text-xl font-semibold mb-4">Payment Summary</h2>
+      <h2 className="mb-4 text-xl font-semibold text-earth-900">Payment summary</h2>
 
       {paymentError && <PaymentError error={paymentError} onRetryPayment={onRetryPayment} onRetryVerify={onRetryVerify} />}
+
+      <dl className={`max-w-sm space-y-2 text-sm ${quote ? 'text-earth-800' : 'text-earth-400'}`}>
+        <Line label="Subtotal" value={quote ? quote.display.subtotal : '—'} />
+        <Line label={`Handling fee${quote ? ` (${quote.feePercent}%)` : ''}`} value={quote ? quote.display.fee : '—'} />
+        <Line label={`GST${quote ? ` (${quote.gstPercent}%)` : ''}`} value={quote ? quote.display.gst : '—'} />
+        <Line label="Total" value={quote ? quote.display.total : '—'} bold />
+      </dl>
+
+      {quote && hasForeigner && vehicle === 'jeep' && (
+        <p className="mt-3 text-sm text-red-600">Foreigner rate applies to the whole jeep</p>
+      )}
+
+      <label className="mt-6 flex items-start gap-2 text-sm text-earth-800">
+        <input type="checkbox" className="mt-0.5" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
+        <span>
+          I have read and accept the{' '}
+          <Link to="/terms" target="_blank" rel="noopener noreferrer" className="text-green-700 underline">
+            terms and conditions
+          </Link>
+          . Safari amounts are non-refundable.
+        </span>
+      </label>
 
       {/* Soft-disabled: a click while incomplete reveals what is missing */}
       <button
         type="button"
         onClick={onPay}
         aria-disabled={!canPay || busy}
-        className={`px-5 py-3 rounded-md font-semibold text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
-          canPay && !busy ? 'bg-green-700 hover:bg-green-800 cursor-pointer' : 'bg-green-700/50 cursor-not-allowed'
+        className={`mt-4 rounded-md px-5 py-3 font-semibold text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600/50 ${
+          canPay && !busy ? 'cursor-pointer bg-green-700 hover:bg-green-800' : 'cursor-not-allowed bg-green-700/50'
         }`}
       >
         {label}
       </button>
-
-      {quote && hasForeigner && vehicle === 'jeep' && (
-        <p className="text-sm text-red-600 mt-2">Foreigner rate applies to the whole jeep</p>
-      )}
       {hint}
-
-      <dl className={`mt-4 text-sm space-y-1 ${quote ? '' : 'text-earth-400'}`}>
-        <div className="flex gap-2"><dt>Subtotal:</dt><dd>{quote ? quote.display.subtotal : '—'}</dd></div>
-        <div className="flex gap-2"><dt>Handling fee (3%):</dt><dd>{quote ? quote.display.fee : '—'}</dd></div>
-        <div className="flex gap-2 font-bold"><dt>Total:</dt><dd>{quote ? quote.display.total : '—'}</dd></div>
-      </dl>
-
-      <div className="mt-6">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
-          I have read and accept the terms and conditions
-        </label>
-        <h3 className="mt-4 text-sm font-semibold text-earth-800">Declaration</h3>
-        <ul className="mt-1 text-xs text-gray-600 list-disc list-inside space-y-0.5">
-          <li>Bookings inside Corbett National Park are provisional and can be changed or cancelled without prior information</li>
-          <li>Carrying firearms is not permitted</li>
-          <li>No pets inside the park</li>
-          <li>Walking or trekking is strictly prohibited</li>
-          <li>3% additional handling and payment gateway charges</li>
-          <li>Carry the same original ID and a hard copy of the permit</li>
-          <li>Mobile phones are prohibited during safari</li>
-          <li>Safari amounts are non-refundable</li>
-        </ul>
-      </div>
     </div>
   );
 };

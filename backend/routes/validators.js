@@ -54,6 +54,7 @@ export const bookingSchema = z.object({
   zone: zoneParam,
   date: ymd,
   shift: z.enum(["morning", "evening"]),
+  paymentOption: z.enum(["full", "advance"]).default("full"),
   contact: z.object({
     name: z.string().trim().min(2).max(80).refine((v) => !/[<>]/.test(v), "Invalid characters"),
     mobile: z.string().trim().regex(/^\d{10}$/, "Mobile must be 10 digits"),

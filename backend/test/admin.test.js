@@ -132,7 +132,7 @@ describe("admin availability", () => {
     expect(res.body.data.conflicts).toHaveLength(1);
     expect((await Availability.findById(slot._id)).totalUnits).toBe(5);
   });
-
+  
   it("closing a slot with a confirmed booking needs force", async () => {
     const slot = await makeSlot({ bookedUnits: 1 });
     await makeConfirmedBooking(slot);
@@ -184,27 +184,31 @@ describe("admin availability", () => {
 
 describe("admin settings", () => {
   const valid = {
-    feePercent: 3, jeepIndianPaise: 800000, jeepForeignPaise: 1700000, canterIndianPaise: 260000, canterForeignPaise: 500000,
-    holdMinutes: 20, shiftTimings: { morning: "6:00 AM - 9:00 AM", evening: "2:30 PM - 6:00 PM" },
+    mainJeepIndianPaise: 800000, mainJeepForeignPaise: 1600000, mainCanterIndianPaise: 240000, mainCanterForeignPaise: 480000,
+    bufferJeepIndianPaise: 550000, bufferJeepForeignPaise: 1250000,
+    feePercent: 3, gstPercent: 5, advancePercent: 70, holdMinutes: 20,
+    shiftTimings: { morning: "6:00 AM - 9:00 AM", evening: "2:30 PM - 6:00 PM" },
   };
 
-  it("rejects an invalid fee and unauthenticated access", async () => {
+  it("rejects invalid values and unauthenticated access", async () => {
     const agent = await loginAgent();
     expect((await agent.put(`${API}/admin/settings`).send({ ...valid, feePercent: 50 })).status).toBe(400);
+    expect((await agent.put(`${API}/admin/settings`).send({ ...valid, advancePercent: 100 })).status).toBe(400);
     expect((await request(app).get(`${API}/admin/settings`)).status).toBe(401);
   });
 
-  it("saves valid settings and the public quote uses the new price", async () => {
+  it("saves valid settings and the public quote uses the new main-zone price with GST", async () => {
     const agent = await loginAgent();
-    const res = await agent.put(`${API}/admin/settings`).send(valid);
-    expect(res.status).toBe(200);
-    expect((await Settings.findOne()).jeepIndianPaise).toBe(800000);
+    expect((await agent.put(`${API}/admin/settings`).send(valid)).status).toBe(200);
+    expect((await Settings.findOne()).mainJeepIndianPaise).toBe(800000);
 
     await makeSlot();
     const quote = await request(app).post(`${API}/public/pricing/quote`).send({
       vehicleType: "jeep", zone: "jhirna", date, shift: "morning", travellers: [{ type: "adult", nationality: "indian" }],
     });
     expect(quote.body.data.subtotalPaise).toBe(800000);
-    expect(quote.body.data.totalPaise).toBe(824000);
+    expect(quote.body.data.gstPaise).toBe(40000);
+    expect(quote.body.data.totalPaise).toBe(864000); // 8000 + 240 + 400
+    expect(quote.body.data.advancePaise).toBe(604800); // 70% of 8640
   });
 });

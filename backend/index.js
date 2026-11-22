@@ -18,6 +18,8 @@ const start = async () => {
   stopMailJob = startEmailRetryJob();
   const port = process.env.PORT || 3000;
   server = app.listen(port, () => console.log(`Server running on port ${port}`));
+  server.headersTimeout = 66_000;
+  server.requestTimeout = 30_000;
   server.on("error", (err) => {
     console.error("Server failed to start:", err.message);
     process.exit(1);

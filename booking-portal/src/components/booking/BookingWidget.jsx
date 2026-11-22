@@ -25,9 +25,8 @@ const getInitial = () => {
 
 const Step = ({ number, title, children }) => (
   <fieldset className="space-y-4">
-    <legend className="mb-1 flex items-center gap-2 text-base font-bold text-green-900">
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-green-700 text-xs text-white">{number}</span>
-      {title}
+    <legend className="mb-1 w-full border-b border-earth-200 pb-2 text-base font-semibold text-earth-900">
+      {number}. {title}
     </legend>
     {children}
   </fieldset>
@@ -69,12 +68,13 @@ const BookingWidget = () => {
   }, [vehicle, zone, date, allSlots, openSlotsOnDate]);
 
   const zoneOptions = useMemo(() => {
-    if (vehicle === 'canter') return [{ value: 'dhikala', label: 'Dhikala' }];
+    if (vehicle === 'canter') return [{ value: 'dhikala', label: 'Dhikala', category: 'main' }];
+    const toOption = (z) => ({ value: z.slug, label: z.name, category: z.category });
     if (date && allSlots) {
       const valid = new Set(openSlotsOnDate.map((s) => s.zone?.slug));
-      return allZones.filter((z) => valid.has(z.slug)).map((z) => ({ value: z.slug, label: z.name }));
+      return allZones.filter((z) => valid.has(z.slug)).map(toOption);
     }
-    return allZones.map((z) => ({ value: z.slug, label: z.name }));
+    return allZones.map(toOption);
   }, [vehicle, date, allSlots, openSlotsOnDate, allZones]);
 
   const zoneSlots = useMemo(
@@ -160,10 +160,10 @@ const BookingWidget = () => {
   else if (slotsLoading) timingHint = 'Loading timings...';
   else if (timingOptions.length === 0) timingHint = 'No timing available';
 
-    return (
-    <form onSubmit={handleSubmit} className="space-y-7" noValidate>
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6" noValidate>
       <div>
-        <h2 className="text-2xl font-bold text-green-900">Book your safari</h2>
+        <h2 className="text-xl font-bold text-earth-900">Book your safari</h2>
         <p className="text-sm text-earth-600">Pick a date, then fill in your details.</p>
       </div>
 
@@ -183,7 +183,7 @@ const BookingWidget = () => {
         <Calendar vehicleType={vehicle} zone={effectiveZone || undefined} selectedDate={date} onSelectDate={handleDateChange} />
 
         {isDateUnavailable && (
-          <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800">
+          <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
             Safari booking is not available on this date
           </div>
         )}
@@ -212,7 +212,7 @@ const BookingWidget = () => {
       </Step>
 
       <Button type="submit" disabled={!isFormValid} className="w-full !py-3 text-base">
-        Book now
+        Continue
       </Button>
     </form>
   );
